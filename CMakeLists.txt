@@ -14,9 +14,6 @@ add_executable (intro
     application.h
     application.cpp
     main.cpp
-
-    stb_image.h
-    tiny_obj_loader.h
 )
 
 configure_file (config.h.in config.h)
@@ -47,6 +44,7 @@ add_custom_target (compile_shaders ALL
 )
 
 target_include_directories (intro PRIVATE
+    ${CMAKE_SOURCE_DIR}/3rdparty
     ${GLFW_INCLUDE_DIRS}
 )
 target_link_libraries (intro PUBLIC

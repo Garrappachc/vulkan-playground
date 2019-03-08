@@ -30,12 +30,12 @@
 #include <tiny_obj_loader.h>
 
 namespace {
+
+// initial window size
 constexpr int Width = 800;
 constexpr int Height = 600;
 
-//const std::string MODEL_PATH = "models/chalet.obj";
-//const std::string TEXTURE_PATH = "textures/chalet.jpg";
-
+// model to load
 constexpr auto ModelPath = INTRO_SOURCE_DIR "/models/chalet.obj";
 constexpr auto TexturePath = INTRO_SOURCE_DIR "/textures/chalet.jpg";
 
@@ -72,7 +72,7 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
     }
 }
 
-}
+} // ns
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
@@ -187,23 +187,6 @@ private:
 
     bool recreateSwapChainRequested = false;
 
-//    const std::vector<Vertex> vertices = {
-//        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-//        {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-//        {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-//        {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
-
-//        {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-//        {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-//        {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-//        {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
-//    };
-
-//    const std::vector<uint16_t> indices = {
-//        0, 1, 2, 2, 3, 0,
-//        4, 5, 6, 6, 7, 4
-//    };
-
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
 
@@ -245,7 +228,6 @@ private:
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-//        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
         window = glfwCreateWindow(Width, Height, "Vulkan", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
@@ -428,7 +410,7 @@ private:
         for (const auto& device : devices) {
             if (isDeviceSuitable(device)) {
                 physicalDevice = device;
-//                msaaSamples = getMaxUsableSampleCount();
+                msaaSamples = std::min(getMaxUsableSampleCount(), VK_SAMPLE_COUNT_2_BIT);
                 break;
             }
         }
