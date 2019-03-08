@@ -1,0 +1,10 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// build directory
+#define INTRO_BUILD_DIR "${CMAKE_BINARY_DIR}"
+
+// source directory
+#define INTRO_SOURCE_DIR "${CMAKE_SOURCE_DIR}"
+
+#endif // CONFIG_H
