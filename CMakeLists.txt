@@ -9,11 +9,16 @@ pkg_search_module (GLFW REQUIRED glfw3)
 
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_INCLUDE_CURRENT_DIR ON)
+set (CMAKE_CXX_FLAGS_DEBUG "-g -ggdb -Wall -Wextra -Wpedantic")
+
+add_subdirectory (3rdparty)
 
 add_executable (intro
     application.h
     application.cpp
     main.cpp
+
+    $<TARGET_OBJECTS:imgui>
 )
 
 configure_file (config.h.in config.h)
