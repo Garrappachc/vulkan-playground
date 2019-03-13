@@ -16,6 +16,8 @@ add_subdirectory (3rdparty)
 add_executable (playground
     application.h
     application.cpp
+    fpscounter.h
+    fpscounter.cpp
     main.cpp
 
     $<TARGET_OBJECTS:imgui>

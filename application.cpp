@@ -1,4 +1,5 @@
 #include "application.h"
+#include "fpscounter.h"
 #include "config.h"
 #include <chrono>
 #include <iostream>
@@ -239,9 +240,6 @@ private:
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
 
-    unsigned frames = 0;
-    std::chrono::duration<double> deltaTime;
-
     uint32_t mipLevels;
     VkImage textureImage;
     VkDeviceMemory textureImageMemory;
@@ -260,6 +258,8 @@ private:
     float time = 0.0f;
     bool isRotating = true;
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_2_BIT;
+
+    FpsCounter fpsCounter;
 
     void initWindow() {
         glfwInit();
@@ -344,16 +344,7 @@ private:
             drawFrame();
             auto end = std::chrono::system_clock::now();
 
-            deltaTime += end - start;
-            frames += 1;
-
-            if (deltaTime.count() >= 1.0) {
-                auto framesPerSecond = frames / deltaTime.count();
-                std::cout << "FPS: " << framesPerSecond << std::endl;
-
-                frames = 0;
-                deltaTime = std::chrono::duration<double>(0);
-            }
+            fpsCounter.frameRendered(std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
         }
 
         vkDeviceWaitIdle(device);
@@ -1425,7 +1416,8 @@ private:
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        ImGui::Begin("Hello, world!");
+        ImGui::Begin("info");
+        ImGui::Text("fps: %d", fpsCounter.framesPerSecond());
         ImGui::Text("mip levels: %d", mipLevels);
         ImGui::End();
 
