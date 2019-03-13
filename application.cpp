@@ -60,6 +60,36 @@ constexpr bool enableValidationLayers = false;
 constexpr bool enableValidationLayers = true;
 #endif
 
+std::string errorString(VkResult errorCode) {
+    switch (errorCode) {
+        // todo : update to SDK 0.10.1
+#define STR(r) case VK_ ##r: return #r
+        STR(NOT_READY);
+        STR(TIMEOUT);
+        STR(EVENT_SET);
+        STR(EVENT_RESET);
+        STR(INCOMPLETE);
+        STR(ERROR_OUT_OF_HOST_MEMORY);
+        STR(ERROR_OUT_OF_DEVICE_MEMORY);
+        STR(ERROR_INITIALIZATION_FAILED);
+        STR(ERROR_DEVICE_LOST);
+        STR(ERROR_MEMORY_MAP_FAILED);
+        STR(ERROR_LAYER_NOT_PRESENT);
+        STR(ERROR_EXTENSION_NOT_PRESENT);
+        STR(ERROR_INCOMPATIBLE_DRIVER);
+#undef STR
+    default:
+        return "UNKNOWN_ERROR";
+    }
+}
+
+void checkVkResult(VkResult result) {
+    if (result != VK_SUCCESS) {
+        std::cerr << "VkResult=" << ::errorString(result) << std::endl;
+        std::abort();
+    }
+}
+
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
                                       const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
     auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
@@ -183,7 +213,8 @@ private:
 
     std::vector<VkFramebuffer> swapChainFramebuffers;
     VkCommandPool commandPool;
-    std::vector<VkCommandBuffer> commandBuffers;
+    std::vector<VkCommandBuffer> primaryCommandBuffers;
+    std::vector<VkCommandBuffer> sceneCommandBuffers;
     std::vector<VkCommandBuffer> imguiCommandBuffers;
 
     std::vector<VkSemaphore> imageAvailableSemaphores;
@@ -245,17 +276,8 @@ private:
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
 
-        ImGuiIO& io = ImGui::GetIO(); (void)io;
-
-//        ImGui::StyleColorsDark();
-        ImGui::StyleColorsClassic();
-
-        auto checkVkResult = [](VkResult result) {
-            if (result != VK_SUCCESS) {
-                std::cerr << "VkResult=" << result << std::endl;
-                std::abort();
-            }
-        };
+        ImGuiIO& io = ImGui::GetIO();
+        ImGui::StyleColorsDark();
 
         ImGui_ImplGlfw_InitForVulkan(window, true);
         ImGui_ImplVulkan_InitInfo init_info = {};
@@ -404,9 +426,7 @@ private:
             createInfo.enabledLayerCount = 0;
         }
 
-        if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create instance!");
-        }
+        checkVkResult(vkCreateInstance(&createInfo, nullptr, &instance));
     }
 
     VkSampleCountFlagBits getMaxUsableSampleCount() {
@@ -828,7 +848,7 @@ private:
         VkCommandPoolCreateInfo poolInfo = {};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
-        poolInfo.flags = 0; // Optional
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
         if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create command pool!");
@@ -912,7 +932,6 @@ private:
 
         transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipLevels);
         copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
-//        transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         generateMipmaps(textureImage, VK_FORMAT_R8G8B8A8_UNORM, texWidth, texHeight, mipLevels);
 
         vkDestroyBuffer(device, stagingBuffer, nullptr);
@@ -1053,7 +1072,6 @@ private:
         samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
         samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
         samplerInfo.minLod = 0; // Optional
-//        samplerInfo.minLod = static_cast<float>(mipLevels / 4);
         samplerInfo.maxLod = static_cast<float>(mipLevels);
         samplerInfo.mipLodBias = 0; // Optional
 
@@ -1361,66 +1379,54 @@ private:
     }
 
     void createCommandBuffers() {
-        commandBuffers.resize(swapChainFramebuffers.size());
+        primaryCommandBuffers.resize(swapChainFramebuffers.size());
+        sceneCommandBuffers.resize(swapChainFramebuffers.size());
         imguiCommandBuffers.resize(swapChainFramebuffers.size());
 
         VkCommandBufferAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocInfo.commandPool = commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+        allocInfo.commandBufferCount = static_cast<uint32_t>(sceneCommandBuffers.size());
 
-        if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate command buffers!");
-        }
+        checkVkResult(vkAllocateCommandBuffers(device, &allocInfo, sceneCommandBuffers.data()));
+        checkVkResult(vkAllocateCommandBuffers(device, &allocInfo, imguiCommandBuffers.data()));
 
-        if (vkAllocateCommandBuffers(device, &allocInfo, imguiCommandBuffers.data()) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate command buffers for imgui!");
-        }
-
-        for (size_t i = 0; i < commandBuffers.size(); i++) {
+        for (size_t i = 0; i < sceneCommandBuffers.size(); i++) {
             VkCommandBufferBeginInfo beginInfo = {};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
 
-            if (vkBeginCommandBuffer(commandBuffers[i], &beginInfo) != VK_SUCCESS) {
+            VkCommandBufferInheritanceInfo inheritanceInfo = {};
+            inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+            inheritanceInfo.renderPass = renderPass;
+            inheritanceInfo.subpass = 0;
+            inheritanceInfo.framebuffer = swapChainFramebuffers[i];
+
+            beginInfo.pInheritanceInfo = &inheritanceInfo;
+
+            if (vkBeginCommandBuffer(sceneCommandBuffers[i], &beginInfo) != VK_SUCCESS) {
                 throw std::runtime_error("failed to begin recording command buffer!");
             }
 
-            VkRenderPassBeginInfo renderPassInfo = {};
-            renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            renderPassInfo.renderPass = renderPass;
-            renderPassInfo.framebuffer = swapChainFramebuffers[i];
-            renderPassInfo.renderArea.offset = {0, 0};
-            renderPassInfo.renderArea.extent = swapChainExtent;
-
-            std::array<VkClearValue, 2> clearValues = {};
-            clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-            clearValues[1].depthStencil = {1.0f, 0};
-
-            renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-            renderPassInfo.pClearValues = clearValues.data();
-
-            vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-            vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+            vkCmdBindPipeline(sceneCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
             VkBuffer vertexBuffers[] = {vertexBuffer};
             VkDeviceSize offsets[] = {0};
-            vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
+            vkCmdBindVertexBuffers(sceneCommandBuffers[i], 0, 1, vertexBuffers, offsets);
 
-            vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-            vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
+            vkCmdBindIndexBuffer(sceneCommandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindDescriptorSets(sceneCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
 
-//            vkCmdDraw(commandBuffers[i], static_cast<uint32_t>(vertices.size()), 1, 0, 0);
-            vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+            vkCmdDrawIndexed(sceneCommandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
-            vkCmdEndRenderPass(commandBuffers[i]);
-
-            if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
+            if (vkEndCommandBuffer(sceneCommandBuffers[i]) != VK_SUCCESS) {
                 throw std::runtime_error("failed to record command buffer!");
             }
         }
+
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        checkVkResult(vkAllocateCommandBuffers(device, &allocInfo, primaryCommandBuffers.data()));
     }
 
     void createSyncObjects() {
@@ -1460,6 +1466,38 @@ private:
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+
+        VkCommandBufferInheritanceInfo inheritanceInfo = {};
+        inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+        inheritanceInfo.renderPass = renderPass;
+        inheritanceInfo.subpass = 0;
+        inheritanceInfo.framebuffer = swapChainFramebuffers[imageIndex];
+
+        beginInfo.pInheritanceInfo = &inheritanceInfo;
+
+        if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create command buffer for imgui");
+        }
+
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+
+        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create command buffer for imgui");
+        }
+
+        return commandBuffer;
+    }
+
+    VkCommandBuffer cmdDraw(uint32_t imageIndex) {
+        VkCommandBuffer commandBuffer = primaryCommandBuffers[imageIndex];
+        checkVkResult(vkResetCommandBuffer(commandBuffer, 0));
+
+        auto imguiCommandBuffer = cmdRenderGui(imageIndex);
+        auto commands = std::experimental::make_array(sceneCommandBuffers[imageIndex], imguiCommandBuffer);
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
         VkRenderPassBeginInfo renderPassInfo = {};
@@ -1467,7 +1505,7 @@ private:
         renderPassInfo.renderPass = renderPass;
         renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
         renderPassInfo.renderArea.offset = {0, 0};
-        renderPassInfo.renderArea.extent = {500, 500};
+        renderPassInfo.renderArea.extent = swapChainExtent;
 
         std::array<VkClearValue, 2> clearValues = {};
         clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
@@ -1476,17 +1514,11 @@ private:
         renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
         renderPassInfo.pClearValues = clearValues.data();
 
-        if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create command buffer for imgui");
-        }
-
-        vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+        checkVkResult(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+        vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+        vkCmdExecuteCommands(commandBuffer, commands.size(), commands.data());
         vkCmdEndRenderPass(commandBuffer);
-
-        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create command buffer for imgui");
-        }
+        checkVkResult(vkEndCommandBuffer(commandBuffer));
 
         return commandBuffer;
     }
@@ -1505,20 +1537,18 @@ private:
         }
 
         updateUniformBuffer(imageIndex);
-        auto imguiCommandBuffer = cmdRenderGui(imageIndex);
+        auto commandBuffer = cmdDraw(imageIndex);
 
         VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-        auto commands = std::experimental::make_array(commandBuffers[imageIndex], imguiCommandBuffer);
 
         VkSubmitInfo submitInfo = {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
-        submitInfo.commandBufferCount = static_cast<uint32_t>(commands.size());
-        submitInfo.pCommandBuffers = commands.data();
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
 
         VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
         submitInfo.signalSemaphoreCount = 1;
@@ -1529,14 +1559,6 @@ private:
         if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
             throw std::runtime_error("failed to submit draw command buffer!");
         }
-
-        VkSubpassDependency dependency = {};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.srcAccessMask = 0;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
         VkPresentInfoKHR presentInfo = {};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -1574,7 +1596,7 @@ private:
             vkDestroyFramebuffer(device, swapChainFramebuffers[i], nullptr);
         }
 
-        vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+        vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(sceneCommandBuffers.size()), sceneCommandBuffers.data());
         vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(imguiCommandBuffers.size()), imguiCommandBuffers.data());
 
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
