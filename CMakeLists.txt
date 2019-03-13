@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.10 FATAL_ERROR)
-project (vulkan-intro)
+project (vulkan-playground)
 
 find_package (Vulkan REQUIRED)
 find_package (glm REQUIRED)
@@ -13,7 +13,7 @@ set (CMAKE_CXX_FLAGS_DEBUG "-g -ggdb -Wall -Wextra -Wpedantic")
 
 add_subdirectory (3rdparty)
 
-add_executable (intro
+add_executable (playground
     application.h
     application.cpp
     main.cpp
@@ -22,22 +22,22 @@ add_executable (intro
 )
 
 configure_file (config.h.in config.h)
-target_sources (intro PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/config.h)
+target_sources (playground PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
-set (intro_SHADERS
+set (playground_SHADERS
     shader.frag
     shader.vert
 )
 
-set (intro_SHADERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
+set (playground_SHADERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
 
 find_program (glslangValidator glslangValidator)
 
-foreach (shader ${intro_SHADERS})
+foreach (shader ${playground_SHADERS})
     add_custom_command (OUTPUT ${shader}.spv
-        DEPENDS ${intro_SHADERS_DIR}/${shader}
+        DEPENDS ${playground_SHADERS_DIR}/${shader}
         COMMAND ${glslangValidator}
-        ARGS -V ${intro_SHADERS_DIR}/${shader} -o ${shader}.spv
+        ARGS -V ${playground_SHADERS_DIR}/${shader} -o ${shader}.spv
         VERBATIM
     )
 endforeach ()
@@ -48,11 +48,11 @@ add_custom_target (compile_shaders ALL
         shader.vert.spv
 )
 
-target_include_directories (intro PRIVATE
+target_include_directories (playground PRIVATE
     ${CMAKE_SOURCE_DIR}/3rdparty
     ${GLFW_INCLUDE_DIRS}
 )
-target_link_libraries (intro PUBLIC
+target_link_libraries (playground PUBLIC
     ${GLFW_LIBRARIES}
     Vulkan::Vulkan
 )

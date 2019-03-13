@@ -234,7 +234,7 @@ private:
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        window = glfwCreateWindow(Width, Height, "Vulkan", nullptr, nullptr);
+        window = glfwCreateWindow(Width, Height, "Vulkan playground", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
         glfwSetFramebufferSizeCallback(window, &ApplicationPrivate::framebufferResizeCallback);
         glfwSetScrollCallback(window, &ApplicationPrivate::scrollCallback);
