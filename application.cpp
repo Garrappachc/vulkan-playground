@@ -180,6 +180,8 @@ struct UniformBufferObject {
 
 class ApplicationPrivate {
 public:
+    Scene scene;
+
     void run() {
         initWindow();
         initVulkan();
@@ -1422,12 +1424,20 @@ private:
         ImGui::Text("mip levels: %d", mipLevels);
         ImGui::End();
 
-        ImGui::Begin("controls");
-        ImGui::BeginChild("chalet");
-        ImGui::Checkbox("", &isRotating);
-        ImGui::SameLine();
-        ImGui::SliderFloat("rotation", &rotationCoef, -1.0f, 1.0f);
-        ImGui::EndChild();
+        ImGui::Begin("objects");
+
+        auto objects = scene.objects();
+        for (const Object* object: objects) {
+            ImGui::BeginChild(object->name().c_str());
+            ImGui::Text("status: %s", object->statusText().c_str());
+            ImGui::EndChild();
+        }
+
+//        ImGui::BeginChild("chalet");
+//        ImGui::Checkbox("", &isRotating);
+//        ImGui::SameLine();
+//        ImGui::SliderFloat("rotation", &rotationCoef, -1.0f, 1.0f);
+//        ImGui::EndChild();
         ImGui::End();
 
         ImGui::Render();
@@ -1902,4 +1912,14 @@ int Application::run()
 {
     d->run();
     return 0;
+}
+
+const Scene* Application::scene() const
+{
+    return &d->scene;
+}
+
+Scene* Application::scene()
+{
+    return &d->scene;
 }

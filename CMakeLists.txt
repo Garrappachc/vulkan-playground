@@ -18,6 +18,11 @@ add_executable (playground
     application.cpp
     fpscounter.h
     fpscounter.cpp
+    object.h
+    object.cpp
+    scene.h
+    scene.cpp
+
     main.cpp
 
     $<TARGET_OBJECTS:imgui>
