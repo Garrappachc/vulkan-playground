@@ -1411,7 +1411,6 @@ private:
     }
 
     VkCommandBuffer cmdRenderGui(uint32_t imageIndex) {
-        // Start the Dear ImGui frame
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -1419,6 +1418,10 @@ private:
         ImGui::Begin("info");
         ImGui::Text("fps: %d", fpsCounter.framesPerSecond());
         ImGui::Text("mip levels: %d", mipLevels);
+        ImGui::End();
+
+        ImGui::Begin("controls");
+        ImGui::Checkbox("rotate", &isRotating);
         ImGui::End();
 
         ImGui::Render();
