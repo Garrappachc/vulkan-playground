@@ -254,8 +254,10 @@ private:
     VkDeviceMemory colorImageMemory;
     VkImageView colorImageView;
 
+    std::chrono::time_point<std::chrono::high_resolution_clock> animationPoint = std::chrono::high_resolution_clock::now();
     float zoom = 2.0f;
-    float time = 0.0f;
+    float rotationCoef = 1.0f;
+    float angle = glm::radians(90.0f);
     bool isRotating = true;
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_2_BIT;
 
@@ -1415,13 +1417,17 @@ private:
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        ImGui::Begin("info");
+        ImGui::Begin("info", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
         ImGui::Text("fps: %d", fpsCounter.framesPerSecond());
         ImGui::Text("mip levels: %d", mipLevels);
         ImGui::End();
 
         ImGui::Begin("controls");
-        ImGui::Checkbox("rotate", &isRotating);
+        ImGui::BeginChild("chalet");
+        ImGui::Checkbox("", &isRotating);
+        ImGui::SameLine();
+        ImGui::SliderFloat("rotation", &rotationCoef, -1.0f, 1.0f);
+        ImGui::EndChild();
         ImGui::End();
 
         ImGui::Render();
@@ -1581,16 +1587,22 @@ private:
         createCommandBuffers();
     }
 
-    void updateUniformBuffer(uint32_t currentImage) {
-        static auto startTime = std::chrono::high_resolution_clock::now();
+    void animate() {
+        auto now = std::chrono::high_resolution_clock::now();
+        auto diff = std::chrono::duration<float, std::chrono::seconds::period>(now - animationPoint).count();
 
         if (isRotating) {
-            auto currentTime = std::chrono::high_resolution_clock::now();
-            time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count() / 2;
+            angle += rotationCoef * diff * glm::radians(90.0f);
         }
 
+        animationPoint = now;
+    }
+
+    void updateUniformBuffer(uint32_t currentImage) {
+        animate();
+
         UniformBufferObject ubo = {};
-        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.model = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.view = glm::lookAt(glm::vec3(zoom, zoom, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
