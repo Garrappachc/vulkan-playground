@@ -8,7 +8,7 @@ class ObjectPrivate;
 
 class Object {
 public:
-    enum Status { Empty, Loading, Complete };
+    enum Status { Empty, Loading, Complete, Error };
 
     Object(const std::string& name);
     virtual ~Object();
@@ -17,6 +17,8 @@ public:
 
     Status status() const;
     std::string statusText() const;
+
+    void load(const std::string& fileName);
 
 private:
     std::unique_ptr<ObjectPrivate> d;

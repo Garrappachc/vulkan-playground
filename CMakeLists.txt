@@ -22,6 +22,8 @@ add_executable (playground
     object.cpp
     scene.h
     scene.cpp
+    vertex.h
+    vertex.cpp
 
     main.cpp
 

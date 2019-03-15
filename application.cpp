@@ -1,5 +1,6 @@
 #include "application.h"
 #include "fpscounter.h"
+#include "vertex.h"
 #include "config.h"
 #include <chrono>
 #include <iostream>
@@ -22,14 +23,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/hash.hpp>
-
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_glfw.h>
@@ -126,52 +121,6 @@ struct SwapChainSupportDetails {
     std::vector<VkPresentModeKHR> presentModes;
 };
 
-struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 color;
-    glm::vec2 texCoord;
-
-    static VkVertexInputBindingDescription getBindingDescription() {
-        VkVertexInputBindingDescription bindingDescription = {};
-        bindingDescription.binding = 0;
-        bindingDescription.stride = sizeof(Vertex);
-        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        return bindingDescription;
-    }
-
-    static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions() {
-        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions = {};
-        attributeDescriptions[0].binding = 0;
-        attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[0].offset = offsetof(Vertex, pos);
-
-        attributeDescriptions[1].binding = 0;
-        attributeDescriptions[1].location = 1;
-        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[1].offset = offsetof(Vertex, color);
-
-        attributeDescriptions[2].binding = 0;
-        attributeDescriptions[2].location = 2;
-        attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-        attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
-
-        return attributeDescriptions;
-    }
-
-    bool operator==(const Vertex& other) const {
-        return pos == other.pos && color == other.color && texCoord == other.texCoord;
-    }
-};
-
-namespace std {
-    template<> struct hash<Vertex> {
-        size_t operator()(Vertex const& vertex) const {
-            return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
-        }
-    };
-}
-
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
@@ -227,14 +176,6 @@ private:
     size_t currentFrame = 0;
 
     bool recreateSwapChainRequested = false;
-
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
-
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
 
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
@@ -330,9 +271,6 @@ private:
         createTextureImage();
         createTextureImageView();
         createTextureSampler();
-        loadModel();
-        createVertexBuffer();
-        createIndexBuffer();
         createUniformBuffers();
         createDescriptorPool();
         createDescriptorSets();
@@ -374,11 +312,11 @@ private:
             vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
         }
 
-        vkDestroyBuffer(device, indexBuffer, nullptr);
-        vkFreeMemory(device, indexBufferMemory, nullptr);
+//        vkDestroyBuffer(device, indexBuffer, nullptr);
+//        vkFreeMemory(device, indexBufferMemory, nullptr);
 
-        vkDestroyBuffer(device, vertexBuffer, nullptr);
-        vkFreeMemory(device, vertexBufferMemory, nullptr);
+//        vkDestroyBuffer(device, vertexBuffer, nullptr);
+//        vkFreeMemory(device, vertexBufferMemory, nullptr);
 
         for (size_t i = 0; i < MaxFramesInFlight; i++) {
             vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
@@ -998,45 +936,6 @@ private:
         textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, mipLevels);
     }
 
-    void loadModel() {
-        tinyobj::attrib_t attrib;
-        std::vector<tinyobj::shape_t> shapes;
-        std::vector<tinyobj::material_t> materials;
-        std::string warn, err;
-
-        std::unordered_map<Vertex, uint32_t> uniqueVertices = {};
-
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, ModelPath)) {
-            throw std::runtime_error(warn + err);
-        }
-
-        for (const auto& shape: shapes) {
-            for (const auto& index : shape.mesh.indices) {
-                Vertex vertex = {};
-
-                vertex.pos = {
-                    attrib.vertices[3 * static_cast<size_t>(index.vertex_index) + 0],
-                    attrib.vertices[3 * static_cast<size_t>(index.vertex_index) + 1],
-                    attrib.vertices[3 * static_cast<size_t>(index.vertex_index) + 2]
-                };
-
-                vertex.texCoord = {
-                    attrib.texcoords[2 * static_cast<size_t>(index.texcoord_index) + 0],
-                    1.0f - attrib.texcoords[2 * static_cast<size_t>(index.texcoord_index) + 1]
-                };
-
-                vertex.color = {1.0f, 1.0f, 1.0f};
-
-                if (uniqueVertices.count(vertex) == 0) {
-                    uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-                    vertices.push_back(vertex);
-                }
-
-                indices.push_back(uniqueVertices[vertex]);
-            }
-        }
-    }
-
     void createTextureSampler() {
         VkSamplerCreateInfo samplerInfo = {};
         samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -1142,43 +1041,43 @@ private:
         vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
     }
 
-    void createVertexBuffer() {
-        VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+//    void createVertexBuffer() {
+//        VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
-        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+//        VkBuffer stagingBuffer;
+//        VkDeviceMemory stagingBufferMemory;
+//        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
-        void* data;
-        VK_CALL(vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data));
-        memcpy(data, vertices.data(), bufferSize);
-        vkUnmapMemory(device, stagingBufferMemory);
+//        void* data;
+//        VK_CALL(vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data));
+//        memcpy(data, vertices.data(), bufferSize);
+//        vkUnmapMemory(device, stagingBufferMemory);
 
-        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
-        copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+//        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
+//        copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
 
-        vkDestroyBuffer(device, stagingBuffer, nullptr);
-        vkFreeMemory(device, stagingBufferMemory, nullptr);
-    }
+//        vkDestroyBuffer(device, stagingBuffer, nullptr);
+//        vkFreeMemory(device, stagingBufferMemory, nullptr);
+//    }
 
-    void createIndexBuffer() {
-        VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+//    void createIndexBuffer() {
+//        VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
-        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+//        VkBuffer stagingBuffer;
+//        VkDeviceMemory stagingBufferMemory;
+//        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
-        void* data;
-        VK_CALL(vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data));
-        memcpy(data, indices.data(), bufferSize);
-        vkUnmapMemory(device, stagingBufferMemory);
+//        void* data;
+//        VK_CALL(vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data));
+//        memcpy(data, indices.data(), bufferSize);
+//        vkUnmapMemory(device, stagingBufferMemory);
 
-        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
-        copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+//        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+//        copyBuffer(stagingBuffer, indexBuffer, bufferSize);
 
-        vkDestroyBuffer(device, stagingBuffer, nullptr);
-        vkFreeMemory(device, stagingBufferMemory, nullptr);
-    }
+//        vkDestroyBuffer(device, stagingBuffer, nullptr);
+//        vkFreeMemory(device, stagingBufferMemory, nullptr);
+//    }
 
     void createUniformBuffers() {
         VkDeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -1347,49 +1246,47 @@ private:
     }
 
     void createCommandBuffers() {
-        primaryCommandBuffers.resize(swapChainFramebuffers.size());
-        sceneCommandBuffers.resize(swapChainFramebuffers.size());
-        imguiCommandBuffers.resize(swapChainFramebuffers.size());
+        const auto size = swapChainFramebuffers.size();
+        primaryCommandBuffers.resize(size);
+        imguiCommandBuffers.resize(size);
 
         VkCommandBufferAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocInfo.commandPool = commandPool;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-        allocInfo.commandBufferCount = static_cast<uint32_t>(sceneCommandBuffers.size());
-
-        VK_CALL(vkAllocateCommandBuffers(device, &allocInfo, sceneCommandBuffers.data()));
+        allocInfo.commandBufferCount = static_cast<uint32_t>(size);
         VK_CALL(vkAllocateCommandBuffers(device, &allocInfo, imguiCommandBuffers.data()));
 
-        for (size_t i = 0; i < sceneCommandBuffers.size(); i++) {
-            VkCommandBufferBeginInfo beginInfo = {};
-            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+//        for (size_t i = 0; i < sceneCommandBuffers.size(); i++) {
+//            VkCommandBufferBeginInfo beginInfo = {};
+//            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+//            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
 
-            VkCommandBufferInheritanceInfo inheritanceInfo = {};
-            inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-            inheritanceInfo.renderPass = renderPass;
-            inheritanceInfo.subpass = 0;
-            inheritanceInfo.framebuffer = swapChainFramebuffers[i];
+//            VkCommandBufferInheritanceInfo inheritanceInfo = {};
+//            inheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+//            inheritanceInfo.renderPass = renderPass;
+//            inheritanceInfo.subpass = 0;
+//            inheritanceInfo.framebuffer = swapChainFramebuffers[i];
 
-            beginInfo.pInheritanceInfo = &inheritanceInfo;
+//            beginInfo.pInheritanceInfo = &inheritanceInfo;
 
-            VK_CALL(vkBeginCommandBuffer(sceneCommandBuffers[i], &beginInfo));
+//            VK_CALL(vkBeginCommandBuffer(sceneCommandBuffers[i], &beginInfo));
 
-            vkCmdBindPipeline(sceneCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+//            vkCmdBindPipeline(sceneCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-            VkBuffer vertexBuffers[] = {vertexBuffer};
-            VkDeviceSize offsets[] = {0};
-            vkCmdBindVertexBuffers(sceneCommandBuffers[i], 0, 1, vertexBuffers, offsets);
+//            VkBuffer vertexBuffers[] = {vertexBuffer};
+//            VkDeviceSize offsets[] = {0};
+//            vkCmdBindVertexBuffers(sceneCommandBuffers[i], 0, 1, vertexBuffers, offsets);
 
-            vkCmdBindIndexBuffer(sceneCommandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-            vkCmdBindDescriptorSets(sceneCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
+//            vkCmdBindIndexBuffer(sceneCommandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+//            vkCmdBindDescriptorSets(sceneCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
 
-            vkCmdDrawIndexed(sceneCommandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+//            vkCmdDrawIndexed(sceneCommandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
-            if (vkEndCommandBuffer(sceneCommandBuffers[i]) != VK_SUCCESS) {
-                throw std::runtime_error("failed to record command buffer!");
-            }
-        }
+//            if (vkEndCommandBuffer(sceneCommandBuffers[i]) != VK_SUCCESS) {
+//                throw std::runtime_error("failed to record command buffer!");
+//            }
+//        }
 
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         VK_CALL(vkAllocateCommandBuffers(device, &allocInfo, primaryCommandBuffers.data()));
@@ -1433,11 +1330,6 @@ private:
             ImGui::EndChild();
         }
 
-//        ImGui::BeginChild("chalet");
-//        ImGui::Checkbox("", &isRotating);
-//        ImGui::SameLine();
-//        ImGui::SliderFloat("rotation", &rotationCoef, -1.0f, 1.0f);
-//        ImGui::EndChild();
         ImGui::End();
 
         ImGui::Render();
